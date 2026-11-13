@@ -1,4 +1,8 @@
-FROM debian:12-slim AS aligner-builder
+# Debian image manifests are pinned. Debian APT is a live mirror: packages may move.
+# Keep successfully verified .debs within each RUN across temporary HTTP failures. The
+# base image clears its default archive cache on each update. No cache is shipped.
+# If the repository changes, review repository metadata, pin a successor and retest both architectures.
+FROM debian:12-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc AS aligner-builder
 
 ARG TARGETARCH
 ARG BUILD_JOBS=4
@@ -19,9 +23,10 @@ ENV DEBIAN_FRONTEND=noninteractive
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 RUN set -eux; \
+    mkdir -p /var/cache/bismark-debs/partial; \
     for attempt in 1 2 3 4 5; do \
       if apt-get -o Acquire::Retries=3 update \
-       && apt-get -o Acquire::Retries=3 install -y --no-install-recommends \
+       && apt-get -o Acquire::Retries=3 -o Dir::Cache::archives=/var/cache/bismark-debs install -y --no-install-recommends \
             binutils \
             build-essential \
             ca-certificates \
@@ -36,8 +41,10 @@ RUN set -eux; \
       sleep 5; \
     done; \
     apt-get clean; \
-    rm -rf /var/lib/apt/lists/*
+    rm -rf /var/cache/bismark-debs /var/lib/apt/lists/*
 
+# Source and release URLs below are external. Verify an upstream replacement against its
+# published identity before changing any digest; keep the existing source archives and notices.
 WORKDIR /tmp/bismark-aligners
 
 COPY docker/hisat2-simde-portability.patch ./
@@ -136,24 +143,25 @@ RUN set -eux; \
       fi; \
     done < <(find /opt/aligners/bin -type f -perm /111 -print)
 
-FROM debian:12-slim AS bismark-fetch
+FROM debian:12-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc AS bismark-fetch
 
 ARG TARGETARCH
-ARG BISMARK_VERSION=3.1.0
-ARG BISMARK_TAG=bismark-rust-v3.1.0
-ARG BISMARK_COMMIT=e552b8f307a7041bcebed8f8e5a764ebcf7b046c
-ARG BISMARK_AMD64_SHA256=8f7b355840523e98c87d7dc61e94227ece9a07a79b48ecce613451539cb3bdab
-ARG BISMARK_ARM64_SHA256=9ce43271bd38229a816ce86de4bd9e8d53181009d305d0884d5e6aa1a3327681
-ARG BISMARK_SOURCE_SHA256=638d7b068031b23fca9c3b3ca5a6b0db675a4da9d48975420fa642b584b5e411
+ARG BISMARK_VERSION=3.2.0
+ARG BISMARK_TAG=bismark-rust-v3.2.0
+ARG BISMARK_COMMIT=c94fa14e45709e6b5b3f68e02775f140dd6c15bb
+ARG BISMARK_AMD64_SHA256=14c253755fb4e9783e9c618af8f0678844a87c5c030e491862ffcfefbd446225
+ARG BISMARK_ARM64_SHA256=53b05d0badb248d17ef8cb4ca5900decbd2350655886020e5d3b51d9f17fd070
+ARG BISMARK_SOURCE_SHA256=291048742f2149f76b8dfcce22b7259381f858952bbf0ee87e7874b3779f4c8d
 
 ENV DEBIAN_FRONTEND=noninteractive
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 RUN set -eux; \
+    mkdir -p /var/cache/bismark-debs/partial; \
     for attempt in 1 2 3 4 5; do \
       if apt-get -o Acquire::Retries=3 update \
-       && apt-get -o Acquire::Retries=3 install -y --no-install-recommends \
+       && apt-get -o Acquire::Retries=3 -o Dir::Cache::archives=/var/cache/bismark-debs install -y --no-install-recommends \
             binutils \
             ca-certificates \
             curl; then \
@@ -164,7 +172,7 @@ RUN set -eux; \
       sleep 5; \
     done; \
     apt-get clean; \
-    rm -rf /var/lib/apt/lists/*
+    rm -rf /var/cache/bismark-debs /var/lib/apt/lists/*
 
 WORKDIR /tmp/bismark
 
@@ -183,7 +191,7 @@ RUN set -eux; \
       -o bismark-binary.tar.gz; \
     curl --retry 5 --retry-delay 2 --retry-all-errors \
       --connect-timeout 20 --max-time 1800 -fsSL \
-      "https://github.com/FelixKrueger/Bismark/archive/refs/tags/${BISMARK_TAG}.tar.gz" \
+      "https://codeload.github.com/FelixKrueger/Bismark/tar.gz/${BISMARK_COMMIT}" \
       -o bismark-source.tar.gz; \
     echo "${asset_sha}  bismark-binary.tar.gz" | sha256sum -c -; \
     echo "${BISMARK_SOURCE_SHA256}  bismark-source.tar.gz" | sha256sum -c -; \
@@ -212,6 +220,7 @@ RUN set -eux; \
       bismark2summary; do \
       ln -s bismark.bin "/opt/bismark/bin/${command}"; \
     done; \
+    test "$(tr -d '[:space:]' < source/rust/VERSION)" = "$BISMARK_VERSION"; \
     sed "s/__SUITE_VERSION__/${BISMARK_VERSION}/g" \
       bismark-canonical-wrapper.sh > /opt/bismark/bin/bismark; \
     chmod 0755 /opt/bismark/bin/bismark; \
@@ -238,7 +247,7 @@ RUN set -eux; \
       printf 'target_arch=%s\n' "${TARGETARCH}"; \
     } > /opt/bismark/share/provenance/source.txt
 
-FROM debian:12-slim AS rammap-fetch
+FROM debian:12-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc AS rammap-fetch
 
 ARG TARGETARCH
 ARG RAMMAP_VERSION=1.1.1
@@ -253,9 +262,10 @@ ENV DEBIAN_FRONTEND=noninteractive
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 RUN set -eux; \
+    mkdir -p /var/cache/bismark-debs/partial; \
     for attempt in 1 2 3 4 5; do \
       if apt-get -o Acquire::Retries=3 update \
-       && apt-get -o Acquire::Retries=3 install -y --no-install-recommends \
+       && apt-get -o Acquire::Retries=3 -o Dir::Cache::archives=/var/cache/bismark-debs install -y --no-install-recommends \
             binutils \
             ca-certificates \
             curl; then \
@@ -266,7 +276,7 @@ RUN set -eux; \
       sleep 5; \
     done; \
     apt-get clean; \
-    rm -rf /var/lib/apt/lists/*
+    rm -rf /var/cache/bismark-debs /var/lib/apt/lists/*
 
 WORKDIR /tmp/rammap
 
@@ -311,18 +321,19 @@ RUN set -eux; \
       printf 'target_arch=%s\n' "${TARGETARCH}"; \
     } > /opt/rammap/share/provenance/source.txt
 
-FROM debian:13-slim
+FROM debian:13-slim@sha256:a72b4433de1cf7d6bae0c4cee74d0547f58601a643b3375f070c51600d63b6b2
 
-ARG BISMARK_VERSION=3.1.0
+ARG BISMARK_VERSION=3.2.0
 
 ENV DEBIAN_FRONTEND=noninteractive
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 RUN set -eux; \
+    mkdir -p /var/cache/bismark-debs/partial; \
     for attempt in 1 2 3 4 5; do \
       if apt-get -o Acquire::Retries=3 update \
-       && apt-get -o Acquire::Retries=3 install -y --no-install-recommends \
+       && apt-get -o Acquire::Retries=3 -o Dir::Cache::archives=/var/cache/bismark-debs install -y --no-install-recommends \
             bzip2 \
             ca-certificates \
             coreutils \
@@ -344,7 +355,7 @@ RUN set -eux; \
       sleep 5; \
     done; \
     apt-get clean; \
-    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+    rm -rf /var/cache/bismark-debs /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 COPY --from=aligner-builder /opt/aligners /opt/aligners
 COPY --from=bismark-fetch /opt/bismark /opt/bismark
@@ -355,10 +366,16 @@ ENV PATH=/opt/bismark/bin:/opt/aligners/bin:/opt/rammap/bin:/usr/local/sbin:/usr
 
 RUN set -eux; \
     chmod 0755 /opt/bismark/share/testdata/bismark-smoke.sh; \
-    /opt/bismark/share/testdata/bismark-smoke.sh buildtime; \
+    banner=$(bismark.bin --version); \
+    detected=$(printf '%s\n' "$banner" | awk '{for(i=1;i<=NF;i++) if ($i ~ /^v[0-9]+\.[0-9]+\.[0-9]+$/) print substr($i,2)}'); \
+    test "$detected" = "$BISMARK_VERSION"; \
+    command -v mkfifo >/dev/null; \
     : > /tmp/bismark-ldd.txt; \
     while IFS= read -r -d '' executable; do \
       if file "$executable" | grep -F "ELF" >/dev/null; then \
+        case "$(file -b "$executable")" in \
+          *statically\ linked*|*static-pie\ linked*) continue ;; \
+        esac; \
         ldd "$executable" >> /tmp/bismark-ldd.txt 2>&1; \
       fi; \
     done < <(find /opt/bismark/bin /opt/aligners/bin /opt/rammap/bin -type f -perm /111 -print0); \
@@ -367,7 +384,7 @@ RUN set -eux; \
       /opt/bismark/share/provenance/source.txt >/dev/null; \
     grep -Fx "upstream_version=1.1.1" \
       /opt/rammap/share/provenance/source.txt >/dev/null; \
-    rm -rf /tmp/taf-bismark-* /tmp/bismark-ldd.txt /root/.cache
+    rm -f /tmp/bismark-ldd.txt
 
 WORKDIR /work
 

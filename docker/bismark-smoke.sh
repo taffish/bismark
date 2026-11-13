@@ -2,12 +2,35 @@
 set -eu
 
 mode="${1:-all}"
-tmp="${TMPDIR:-/tmp}/taf-bismark-smoke-$$-${mode}"
-
+case "$mode" in
+  all)
+    for stage in identity backend-bowtie2 backend-hisat2 backend-minimap2 backend-rammap backend-rammap-subprocess postprocess streaming; do
+      "$0" "$stage"
+    done
+    exit 0 ;;
+  identity|backend-bowtie2|backend-hisat2|backend-minimap2|backend-rammap|backend-rammap-subprocess|postprocess|streaming) ;;
+  *) printf 'unknown smoke mode: %s\n' "$mode" >&2; exit 2 ;;
+esac
+umask 077
+tmp=$(mktemp -d "${TMPDIR:-/tmp}/taf-bismark.XXXXXXXX")
 cleanup() {
-  rm -rf "$tmp"
+  rc=$?
+  trap - EXIT HUP INT TERM
+  if [ "$rc" -ne 0 ]; then
+    for diagnostic in "$tmp"/*.stderr; do
+      [ -f "$diagnostic" ] || continue
+      printf '%s: %s\n' "$mode" "${diagnostic##*/}" >&2
+      tail -n 20 "$diagnostic" >&2 || :
+    done
+  fi
+  cd / && rm -rf -- "$tmp" || exit 1
+  exit "$rc"
 }
-trap cleanup EXIT HUP INT TERM
+trap cleanup EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+cd "$tmp"
 
 make_inputs() {
   mkdir -p "$tmp/genome" "$tmp/reads" "$tmp/out"
@@ -80,7 +103,8 @@ run_backend() {
   test -s "$bam"
   test -n "$report"
   test -s "$report"
-  grep -F "Sequences analysed" "$report" >/dev/null
+  grep -F '(version: v3.2.0)' "$report" >/dev/null
+  awk -F '\t' '$1=="Sequences analysed in total:" && $2==5 {seen=1} END {exit !seen}' "$report"
 
   case "$backend" in
     rammap)
@@ -111,9 +135,12 @@ run_backend() {
 }
 
 identity() {
-  bismark --version | grep -Fx "Bismark Version: v3.1.0" >/dev/null
-  bismark.bin --version | grep -F "bismark (Bismark Rust suite) v3.1.0" >/dev/null
+  bismark --version | grep -Fx "Bismark Version: v3.2.0" >/dev/null
+  bismark.bin --version | grep -F "bismark (Bismark Rust suite) v3.2.0" >/dev/null
   bismark --help | grep -F "The Bismark bisulfite-sequencing suite" >/dev/null
+  bismark align --help | grep -F -- '--no_stream_converted' >/dev/null
+  bismark_methylation_extractor --help | grep -F -- '--allow_discordant' >/dev/null
+  command -v mkfifo >/dev/null
 
   for command in \
     deduplicate_bismark \
@@ -128,7 +155,7 @@ identity() {
     bismark2report \
     bismark2summary; do
     command -v "$command" >/dev/null
-    "$command" --version | grep -F "(Bismark Rust suite) v3.1.0" >/dev/null
+    "$command" --version | grep -F "(Bismark Rust suite) v3.2.0" >/dev/null
   done
 
   bowtie2 --version 2>&1 | grep -F "version 2.5.5" >/dev/null
@@ -142,8 +169,8 @@ identity() {
   test -s /opt/bismark/share/licenses/bismark/LICENSE
   test -s /opt/bismark/share/licenses/bismark/THIRD-PARTY-NOTICES.md
   test -s /opt/bismark/share/provenance/source.txt
-  test -s /opt/bismark/share/source/bismark-rust-v3.1.0.tar.gz
-  grep -Fx "upstream_commit=e552b8f307a7041bcebed8f8e5a764ebcf7b046c" \
+  test -s /opt/bismark/share/source/bismark-rust-v3.2.0.tar.gz
+  grep -Fx "upstream_commit=c94fa14e45709e6b5b3f68e02775f140dd6c15bb" \
     /opt/bismark/share/provenance/source.txt >/dev/null
   test -s /opt/rammap/share/licenses/rammap/LICENSE
   test -s /opt/rammap/share/provenance/source.txt
@@ -207,7 +234,7 @@ postprocess() {
   find "$tmp/consistency" -type f -name '*.bam' ! -name 'consistency-input.bam' -size +0c -print -quit | grep -q .
 
   printf '>chr1\nACGTACGTACGT\n' > "$tmp/nome/chr1.fa"
-  printf 'Bismark methylation extractor; version v0.25.1\nr1\t+\tchr1\t6\tz\t4\t8\t+\n' \
+  printf 'Bismark methylation extractor; version v3.2.0\nr1\t+\tchr1\t6\tz\t4\t8\t+\n' \
     > "$tmp/nome/input.txt"
   NOMe_filtering \
     --genome_folder "$tmp/nome" \
@@ -216,61 +243,48 @@ postprocess() {
   test -s "$tmp/nome/input.manOwar.txt.gz"
 }
 
+streaming() {
+  prepare_backend bowtie2
+  mkdir "$tmp/transient"
+  for shape in default files; do
+    set --
+    if [ "$shape" = files ]; then set -- --no_stream_converted; fi
+    if ! bismark --bowtie2 "$@" --temp_dir "$tmp/transient" --genome "$tmp/genome" \
+        --output_dir "$tmp/$shape" --basename compare "$tmp/reads/reads.fq" >"$tmp/$shape.stdout" 2>"$tmp/$shape.stderr"; then
+      cat "$tmp/$shape.stderr" >&2; return 1
+    fi
+    test -z "$(find "$tmp/transient" -mindepth 1 -print -quit)"
+  done
+  python3 - "$tmp" <<'PY'
+import gzip, struct, sys
+from pathlib import Path
+root = Path(sys.argv[1])
+def records(path):
+    with gzip.open(path, 'rb') as f:
+        def size(): return struct.unpack('<i', f.read(4))[0]
+        assert f.read(4) == b'BAM\x01'
+        header = f.read(size()); assert b'3.2.0' in header
+        for _ in range(size()): f.read(size()); f.read(4)
+        rows = []
+        while raw := f.read(4):
+            length = struct.unpack('<i', raw)[0]
+            row = f.read(length)
+            assert len(row) == length and length >= 32
+            rows.append(row)
+    return rows
+a = records(root/'default/compare.bam')
+assert len(a) == 5 and a == records(root/'files/compare.bam'), 'stream/files BAM record mismatch'
+PY
+  sed 's/$/\r/' "$tmp/reads/reads.fq" > "$tmp/crlf.fq"
+  if bismark --bowtie2 --temp_dir "$tmp/transient" --genome "$tmp/genome" \
+      --output_dir "$tmp/rejected" "$tmp/crlf.fq" >"$tmp/bad.stdout" 2>"$tmp/bad.stderr"; then return 1; fi
+  grep -i -e 'CRLF' -e 'Windows.*line' "$tmp/bad.stderr" >/dev/null
+  test -z "$(find "$tmp" -type p -print -quit)"
+}
+
 case "$mode" in
-  identity)
-    identity
-    ;;
-  backend-bowtie2)
-    run_backend bowtie2
-    ;;
-  backend-hisat2)
-    run_backend hisat2
-    ;;
-  backend-minimap2)
-    run_backend minimap2
-    ;;
-  backend-rammap)
-    run_backend rammap
-    ;;
-  backend-rammap-subprocess)
-    run_backend rammap-subprocess
-    ;;
-  postprocess)
-    postprocess
-    ;;
-  buildtime)
-    identity
-    prepare_backend bowtie2
-    cleanup
-    tmp="${TMPDIR:-/tmp}/taf-bismark-smoke-$$-hisat2"
-    prepare_backend hisat2
-    cleanup
-    tmp="${TMPDIR:-/tmp}/taf-bismark-smoke-$$-minimap2"
-    prepare_backend minimap2
-    ;;
-  all)
-    identity
-    cleanup
-    tmp="${TMPDIR:-/tmp}/taf-bismark-smoke-$$-bowtie2"
-    run_backend bowtie2
-    cleanup
-    tmp="${TMPDIR:-/tmp}/taf-bismark-smoke-$$-hisat2"
-    run_backend hisat2
-    cleanup
-    tmp="${TMPDIR:-/tmp}/taf-bismark-smoke-$$-minimap2"
-    run_backend minimap2
-    cleanup
-    tmp="${TMPDIR:-/tmp}/taf-bismark-smoke-$$-rammap"
-    run_backend rammap
-    cleanup
-    tmp="${TMPDIR:-/tmp}/taf-bismark-smoke-$$-rammap-subprocess"
-    run_backend rammap-subprocess
-    cleanup
-    tmp="${TMPDIR:-/tmp}/taf-bismark-smoke-$$-postprocess"
-    postprocess
-    ;;
-  *)
-    printf 'unknown smoke mode: %s\n' "$mode" >&2
-    exit 2
-    ;;
+  identity) identity ;;
+  backend-*) run_backend "${mode#backend-}" ;;
+  postprocess) postprocess ;;
+  streaming) streaming ;;
 esac

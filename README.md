@@ -1,221 +1,60 @@
-# bismark
+# Bismark for TAFFISH
 
-`bismark` packages the Bismark Rust Suite for TAFFISH.
+`taf-bismark` runs the [Bismark Rust Suite](https://github.com/FelixKrueger/Bismark/releases/tag/bismark-rust-v3.2.0) for bisulfite read alignment, methylation extraction, QC and offline reporting. The TAFFISH tool version is **3.2.0-r1**; the image is `ghcr.io/taffish/bismark:3.2.0-r1` (native Linux amd64 and arm64). For runnable examples, see [command help](docs/help.md) or `taf-bismark --help`.
 
-Package identity:
+## First run
 
-- name: `bismark`
-- command: `taf-bismark`
-- kind: `tool`
-- version: `3.1.0-r1`
-- container image: `ghcr.io/taffish/bismark:3.1.0-r1`
-- upstream tag: `bismark-rust-v3.1.0`
-- runtime version: `Bismark Version: v3.1.0`
-- native platforms: `linux/amd64`, `linux/arm64`
-- license: Apache-2.0 for the TAFFISH app packaging
-- upstream license: `GPL-3.0-only`
-- upstream: [FelixKrueger/Bismark](https://github.com/FelixKrueger/Bismark)
+Once the version is in the Hub, install it with `taf install bismark 3.2.0-r1`. From a source checkout, use `taf install --from .` instead. `taf-bismark --version` identifies the package; `taf-bismark -- --version` identifies the Bismark executable.
 
-## What This App Packages
-
-Bismark 3.1.0 is the first generally available Rust-suite line. It supersedes
-the maintenance-frozen Perl 0.25.1 line while retaining the 12 canonical tool
-names and the faithful default output contract validated by upstream against
-Perl 0.25.1.
-
-The image uses the upstream release binaries built with `rammap-inprocess` and
-`binseq-input`. It also supplies the exact external aligner versions against
-which upstream validates the suite:
-
-- Bowtie 2 2.5.5
-- HISAT2 2.2.2
-- minimap2 2.31-r1302
-- rammap 1.1.1
-
-The aligners are built from checksum-pinned source. The Bioconda SIMDe
-portability patch is applied to HISAT2 so both published architectures are
-native builds. Exact source archives, licenses, patch provenance, and checksums
-are retained under `/opt/bismark/share` and `/opt/aligners/share`.
-
-## Scope
-
-This app supports:
-
-- Bowtie 2, HISAT2, minimap2, and both rammap Bismark alignment paths
-- bisulfite genome preparation, including combined indices and composition
-- deduplication, methylation extraction, bedGraph and cytosine reports
-- BAM/CRAM-aware QC, filtering, consistency analysis, HTML reports, and summary
-- WGBS, RRBS, PBAT, EM-seq, NOMe-seq, BINSEQ, and upstream 5-Base interfaces
-- native `linux/amd64` and `linux/arm64` containers
-
-This app does not include:
-
-- reference genomes or prebuilt genome indices
-- read trimming tools such as Trim Galore
-- the frozen Perl Bismark 0.25.1 scripts
-- samtools, which is not required by the Rust suite's pure-Rust alignment I/O
-
-## Container Contents
-
-The 12 canonical Bismark commands are:
-
-- `bismark`
-- `deduplicate_bismark`
-- `bismark_methylation_extractor`
-- `bismark2bedGraph`
-- `coverage2cytosine`
-- `bismark_genome_preparation`
-- `bam2nuc`
-- `NOMe_filtering`
-- `filter_non_conversion`
-- `methylation_consistency`
-- `bismark2report`
-- `bismark2summary`
-
-The image also includes `bowtie2`, `bowtie2-build`, `bowtie2-inspect`,
-`hisat2`, `hisat2-build`, `hisat2-inspect`, minimap2, rammap 1.1.1, Perl, Python 3, and
-`procps`. `procps` preserves compatibility with task wrappers that collect
-process metrics, including nf-core/Nextflow-style wrappers.
-
-## Usage
-
-Access the upstream suite help and version:
-
-```sh
-taf-bismark -- --help
-taf-bismark -- --version
-```
-
-Prepare a reference with the default Bowtie 2 backend:
+Start in a fresh, writable project directory with `reads.fq.gz` and the chosen assembly's FASTA in `reference/`:
 
 ```sh
 taf-bismark bismark_genome_preparation --bowtie2 reference/
+taf-bismark bismark --genome reference/ --basename sample reads.fq.gz
+taf-bismark bismark_methylation_extractor --single-end --bedGraph --comprehensive sample.bam
+taf-bismark bismark2report --alignment_report sample_SE_report.txt --output sample-report.html
+taf-bismark bismark2summary -o project-summary sample.bam
 ```
 
-Align single-end reads:
+Open `sample-report.html` for this alignment or `project-summary.html` for the project; `project-summary.txt` is the matching table. Each page embeds its plotting code. No server, port, network or graphical environment is required on the analysis machine. Keep the BAM and conventionally named text reports together for summary discovery. If optional reports are elsewhere, pass their paths to `bismark2report`. Missing optional measurements are not zero-valued observations.
 
-```sh
-taf-bismark bismark --genome reference/ reads.fastq.gz
-```
+## Reference data and shared use
 
-Align paired-end reads with HISAT2:
+There is no Bismark model, standard database or automatic downloader. Supply the FASTA for the required assembly. Record its source, assembly/version, checksum, Bismark version and the index backend/options. The original FASTA **and** the entire derived `Bisulfite_Genome/` tree constitute the reference. Do not reuse an index built for another backend, assembly or index layout. rammap uses the minimap2 index. Genome preparation writes next to the FASTA; budget memory and disk for the selected genome. For memory-constrained combined index preparation, see `--combined_index_sequential` in preparation help.
 
-```sh
-taf-bismark bismark --hisat2 --genome reference/ \
-  -1 sample_R1.fastq.gz -2 sample_R2.fastq.gz
-```
+On a shared system, an administrator or designated owner can build and verify a new reference in its own writable directory and give users read access to files and traversal access to directories. Ordinary users can then mount that complete versioned directory **read-only**. The [help](docs/help.md) gives a copyable command for Docker, Podman and Apptainer. Select `--genome /mnt` inside the container, keep each job's inputs and writable outputs in its own working directory and do not run preparation against the read-only tree. Changing the reference means preparing a different directory, not overwriting the one in use. Reading and analysis require no network.
 
-Extract methylation calls and produce bedGraph output:
+## Commands and aligners
 
-```sh
-taf-bismark bismark_methylation_extractor \
-  --paired-end --bedGraph sample_bismark_bt2_pe.bam
-```
+| Reference or report | Docker | Podman | Apptainer |
+| --- | --- | --- | --- |
+| Share an existing reference | `TAFFISH_DOCKER_RUN_ARGS="-v ${BISMARK_REF}:/mnt:ro"` | `TAFFISH_PODMAN_RUN_ARGS="-v ${BISMARK_REF}:/mnt:ro"` | `TAFFISH_APPTAINER_RUN_ARGS="--bind ${BISMARK_REF}:/mnt:ro"` |
+| Read sample/project HTML | Open the output file locally | Same | Same |
 
-Generate an HTML report:
+Set `TAFFISH_CONTAINER_BACKEND` to the matching backend; the [help](docs/help.md) shows full invocations. Use references whose terms allow the intended local or shared use; the software license does not grant rights to an assembly.
 
-```sh
-taf-bismark bismark2report \
-  --alignment_report sample_bismark_bt2_PE_report.txt
-```
+`bismark` is the default upstream executable. Use `taf-bismark -- --help` for its help, `taf-bismark bismark align --help` for alignment options, or invoke any canonical executable explicitly. Bare `taf-bismark prepare` would ask TAFFISH for an executable named `prepare`.
 
-## Command Mode
+| Task | Canonical command(s) |
+| --- | --- |
+| Prepare and align | `bismark_genome_preparation`, `bismark` |
+| Deduplicate and extract | `deduplicate_bismark`, `bismark_methylation_extractor` |
+| Convert methylation tables | `bismark2bedGraph`, `coverage2cytosine` |
+| QC and filtering | `bam2nuc`, `NOMe_filtering`, `filter_non_conversion`, `methylation_consistency` |
+| Report | `bismark2report`, `bismark2summary` |
 
-`bismark` is the default upstream command. Use `--` for option-leading
-arguments intended for it, such as `taf-bismark -- --help`.
+The image contains Bowtie 2 2.5.5 (default), HISAT2 2.2.2, minimap2 2.31-r1302 and rammap 1.1.1. The official binary includes BINSEQ support and in-process rammap; `--rammap_subprocess` selects the separate bundled executable. Both rammap routes are experimental upstream. The default aligner output is BAM. This is not the frozen Perl suite and does not bundle Trim Galore, samtools, references or prebuilt indices.
 
-TAFFISH automatic command mode treats the first non-option token as an
-executable. Therefore use `taf-bismark bismark prepare ...` for the Rust
-multicall subcommand interface, or invoke the corresponding canonical command
-directly, such as `taf-bismark bismark_genome_preparation ...`. Do not use
-`taf-bismark prepare ...`, because `prepare` is a Bismark subcommand rather
-than a container executable.
+## What changed in 3.2.0
 
-## Inputs
+- Where supported, converted reads stream through named pipes. HISAT2, subprocess rammap, combined-index modes or a filesystem without FIFO support fall back to temporary files. Use `--no_stream_converted` to request temporary files explicitly. Use separate scratch directories for concurrent jobs; allow disk for the file path.
+- Alignment reports, extractor headers and BAM program records now identify the Rust suite version rather than the old Perl compatibility version. MAPQ for some aligner modes has changed; avoid assuming byte identity or interchangeable MAPQ filters across releases.
+- For optional Illumina 5-Base analysis, upstream documents reduced coverage and undercalling in CpG-dense, heavily methylated regions. See the [version-matched 5-Base notes](https://github.com/FelixKrueger/Bismark/blob/c94fa14e45709e6b5b3f68e02775f140dd6c15bb/docs/src/content/docs/rust/illumina-5-base.md). A packaging smoke test is not scientific validation.
 
-| Input | Meaning | Notes |
-| --- | --- | --- |
-| reference directory | FASTA reference and generated bisulfite indices | User supplied; prepare once per backend/options set |
-| FASTQ/FASTA/uBAM/BINSEQ | Alignment reads | Exact support varies by upstream mode; see command help |
-| BAM/SAM/CRAM | Post-alignment inputs | Accepted by the relevant Rust post-processing commands |
-| coverage/call tables | bedGraph, cytosine, and NOMe inputs | Formats follow Bismark conventions |
+## Build, licenses and citation
 
-## Output Notes
+Native Docker reported local image sizes of 245,600,863 bytes on amd64 and 264,432,091 bytes on arm64 (not registry download sizes). Reference FASTA, indices and analysis results are additional disk use. The offline packaging checks exercise the five alignment routes, streaming versus files, post-processing and both HTML reports on a small artificial reference. They do not benchmark large assemblies or validate scientific accuracy.
 
-Bismark writes alignment files, text reports, methylation-call tables,
-bedGraph/coverage files, cytosine reports, QC statistics, and HTML reports into
-the current directory unless an upstream `--output_dir` or `--dir` option is
-used. Run in a writable mounted working directory and set output directories
-explicitly in automated analyses.
+The official Linux suite assets and source at commit `c94fa14e45709e6b5b3f68e02775f140dd6c15bb` are SHA-256 checked. The canonical version shim exposes the pipeline-compatible banner; other calls go to the upstream executable. Aligner sources are pinned; the retained HISAT2 SIMDe portability patch allows native ARM64 compilation. Base images have fixed digests. Distribution package repositories can change availability, so a clean rebuild also depends on those external inputs.
 
-## Resources, Databases, and Platform
-
-No external database is required. Reference FASTA files and their derived
-indices remain user data and are not embedded in the image. Indexing and
-alignment resource use scale with genome size; mammalian references require
-substantial disk and memory, especially non-directional or parallel combined
-index modes. The upstream `--combined_index_sequential` path is the lower-memory
-combined-index option.
-
-Both `linux/amd64` and `linux/arm64` are native. The image does not require
-network access at runtime.
-
-## Boundaries
-
-- The canonical `bismark -v`/`--version` wrapper reproduces the
-  nf-core/methylseq-readable banner and reports the real suite version. All
-  non-version invocations execute the unchanged upstream multicall binary.
-- To preserve byte-identical output against the frozen Perl oracle, upstream
-  intentionally keeps `v0.25.1` in some alignment-report headers, extractor
-  headers, and BAM `@PG` records. Those compatibility markers do not identify
-  the installed executable; `bismark --version` reports Rust Suite 3.1.0.
-- The release binary contains in-process rammap. The pinned rammap 1.1.1 CLI is
-  also bundled because upstream probes it during configuration and uses it when
-  `--rammap_subprocess` is requested. Both paths remain experimental upstream
-  and are concordance-validated rather than byte-identical to minimap2.
-- Upstream currently labels aligner `--sam` and `--cram` output paths as
-  deferred; BAM is the supported default. Post-processing commands retain their
-  documented BAM/SAM/CRAM input capabilities.
-- Compatibility options named `--samtools_path` are accepted and ignored by
-  Rust commands that now use pure-Rust I/O. This image does not pretend to
-  provide samtools.
-- Scientific settings, library directionality, trimming, references, and
-  interpretation remain the user's responsibility.
-
-## Troubleshooting
-
-- If Bismark cannot find an index, prepare the same reference with the selected
-  backend and keep the complete `Bisulfite_Genome` directory together.
-- If a path is interpreted as a TAFFISH command, use the explicit upstream
-  executable form, for example `taf-bismark bismark --genome ...`.
-- If a run exhausts memory, reduce backend threads or select the documented
-  sequential combined-index mode rather than the parallel combined model.
-
-## Testing
-
-The independent offline smoke tests cover:
-
-- all 12 canonical command identities and exact dependency versions
-- real reference conversion, indexing, and alignment through Bowtie 2, HISAT2,
-  minimap2, in-process rammap, and subprocess rammap paths
-- deduplication, extraction, bedGraph, cytosine conversion, nucleotide QC,
-  non-conversion filtering, consistency splitting, NOMe filtering, and reports
-- retained source/checksum provenance and dynamic-library closure
-
-The smoke suite is a packaging and minimum-function gate, not a replacement for
-full scientific validation on production data.
-
-## License and Citation
-
-TAFFISH app packaging: Apache-2.0.
-
-Bismark: GPL-3.0-only. Bowtie 2 and HISAT2 are GPL-3.0-or-later; minimap2 and
-rammap are MIT. Bundled components retain their own notices in the image.
-
-Cite Bismark as described by upstream:
-
-> Krueger F, Andrews SR. Bismark: a flexible aligner and methylation caller for
-> Bisulfite-Seq applications. Bioinformatics. 2011;27(11):1571-1572.
-> <https://doi.org/10.1093/bioinformatics/btr167>
-
-Upstream documentation: <https://felixkrueger.github.io/Bismark/>
+TAFFISH packaging is Apache-2.0; Bismark is GPL-3.0-only. Bowtie 2 and HISAT2 retain their GPL licenses; minimap2 and rammap are MIT. Bundled sources, checksums and third-party notices are under `/opt/bismark/share`, `/opt/aligners/share` and `/opt/rammap/share`. See the [upstream manual](https://felixkrueger.github.io/Bismark/) and cite [Krueger and Andrews, Bioinformatics (2011)](https://doi.org/10.1093/bioinformatics/btr167).
