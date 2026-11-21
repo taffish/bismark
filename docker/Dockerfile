@@ -146,12 +146,12 @@ RUN set -eux; \
 FROM debian:12-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc AS bismark-fetch
 
 ARG TARGETARCH
-ARG BISMARK_VERSION=3.2.0
-ARG BISMARK_TAG=bismark-rust-v3.2.0
-ARG BISMARK_COMMIT=c94fa14e45709e6b5b3f68e02775f140dd6c15bb
-ARG BISMARK_AMD64_SHA256=14c253755fb4e9783e9c618af8f0678844a87c5c030e491862ffcfefbd446225
-ARG BISMARK_ARM64_SHA256=53b05d0badb248d17ef8cb4ca5900decbd2350655886020e5d3b51d9f17fd070
-ARG BISMARK_SOURCE_SHA256=291048742f2149f76b8dfcce22b7259381f858952bbf0ee87e7874b3779f4c8d
+ARG BISMARK_VERSION=3.3.0
+ARG BISMARK_TAG=bismark-rust-v3.3.0
+ARG BISMARK_COMMIT=4eb52d27989bfb52698f1e697fd20c2baaa7f64f
+ARG BISMARK_AMD64_SHA256=8b5f149f1e327f60f6dd632828bf615d4223c32853ab87983f7cbd34217aed0d
+ARG BISMARK_ARM64_SHA256=5f42a7f990082c9f5be9d5e997e39ba2370659ddcc197d67ffc7f3dfd3d0c9af
+ARG BISMARK_SOURCE_SHA256=3e6ed07cf559e2e947cda88516abd0a090d2538c38b707f3d50dea0967342eab
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -321,9 +321,44 @@ RUN set -eux; \
       printf 'target_arch=%s\n' "${TARGETARCH}"; \
     } > /opt/rammap/share/provenance/source.txt
 
+FROM debian:13-slim@sha256:a72b4433de1cf7d6bae0c4cee74d0547f58601a643b3375f070c51600d63b6b2 AS bwamem3-builder
+
+ARG TARGETARCH
+ARG BUILD_JOBS=4
+ARG BWAMEM3_VERSION=0.18.0
+ARG BWAMEM3_COMMIT=e0903cb9395bc755059358f916b2efdb58a30073
+ARG BWAMEM3_SOURCE_SHA256=6145d3c26f0fde77ff4938c60a4fb7ec7688e4f5236ab7d385c792088aca79d7
+ENV DEBIAN_FRONTEND=noninteractive
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+# APT remains a live repository. The official release archive includes its pinned
+# submodules; a missing or changed archive must fail its digest check, not float.
+RUN set -eux; \
+    apt-get -o Acquire::Retries=5 update; \
+    apt-get -o Acquire::Retries=5 install -y --no-install-recommends \
+      autoconf automake binutils build-essential ca-certificates clang-19 cmake \
+      curl libdeflate-dev libomp-19-dev lld-19 zlib1g-dev; \
+    apt-get clean; rm -rf /var/lib/apt/lists/*
+WORKDIR /tmp/bwamem3-build
+RUN set -eux; \
+    curl --retry 5 --retry-all-errors --connect-timeout 20 --max-time 1800 -fsSL \
+      "https://github.com/fg-labs/bwa-mem3/releases/download/v${BWAMEM3_VERSION}/Source_code_including_submodules.tar.gz" -o source.tar.gz; \
+    echo "${BWAMEM3_SOURCE_SHA256}  source.tar.gz" | sha256sum -c -; \
+    mkdir source; tar --no-same-owner -xzf source.tar.gz -C source --strip-components=1; \
+    make -C source -j "${BUILD_JOBS}" CXX=clang++-19 CC=clang-19; \
+    install -d /opt/bwamem3/bin /opt/bwamem3/share/source /opt/bwamem3/share/licenses /opt/bwamem3/share/provenance; \
+    install -m 0755 source/bwa-mem3 /opt/bwamem3/bin/bwa-mem3; \
+    strip --strip-unneeded /opt/bwamem3/bin/bwa-mem3; \
+    cp source.tar.gz "/opt/bwamem3/share/source/bwa-mem3-${BWAMEM3_VERSION}.tar.gz"; \
+    cp source/LICENSE /opt/bwamem3/share/licenses/LICENSE; \
+    find source/ext -type f \( -iname '*license*' -o -iname '*copying*' \) -exec cp --parents '{}' /opt/bwamem3/share/licenses/ \;; \
+    printf 'version=%s\ncommit=%s\nsource_sha256=%s\narchitecture=%s\nbuild=upstream default; clang-19; no algorithm patches\n' \
+      "$BWAMEM3_VERSION" "$BWAMEM3_COMMIT" "$BWAMEM3_SOURCE_SHA256" "$TARGETARCH" \
+      > /opt/bwamem3/share/provenance/source.txt
+
 FROM debian:13-slim@sha256:a72b4433de1cf7d6bae0c4cee74d0547f58601a643b3375f070c51600d63b6b2
 
-ARG BISMARK_VERSION=3.2.0
+ARG BISMARK_VERSION=3.3.0
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -342,6 +377,8 @@ RUN set -eux; \
             grep \
             gzip \
             libgcc-s1 \
+            libdeflate0 \
+            libomp5-19 \
             libstdc++6 \
             perl \
             procps \
@@ -360,15 +397,18 @@ RUN set -eux; \
 COPY --from=aligner-builder /opt/aligners /opt/aligners
 COPY --from=bismark-fetch /opt/bismark /opt/bismark
 COPY --from=rammap-fetch /opt/rammap /opt/rammap
+COPY --from=bwamem3-builder /opt/bwamem3 /opt/bwamem3
 COPY docker/bismark-smoke.sh /opt/bismark/share/testdata/bismark-smoke.sh
 
-ENV PATH=/opt/bismark/bin:/opt/aligners/bin:/opt/rammap/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ENV PATH=/opt/bismark/bin:/opt/aligners/bin:/opt/rammap/bin:/opt/bwamem3/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 RUN set -eux; \
     chmod 0755 /opt/bismark/share/testdata/bismark-smoke.sh; \
     banner=$(bismark.bin --version); \
     detected=$(printf '%s\n' "$banner" | awk '{for(i=1;i<=NF;i++) if ($i ~ /^v[0-9]+\.[0-9]+\.[0-9]+$/) print substr($i,2)}'); \
     test "$detected" = "$BISMARK_VERSION"; \
+    bwa-mem3 version > /tmp/bwamem3-version.txt; \
+    grep -F '0.18.0' /tmp/bwamem3-version.txt; \
     command -v mkfifo >/dev/null; \
     : > /tmp/bismark-ldd.txt; \
     while IFS= read -r -d '' executable; do \
@@ -378,13 +418,13 @@ RUN set -eux; \
         esac; \
         ldd "$executable" >> /tmp/bismark-ldd.txt 2>&1; \
       fi; \
-    done < <(find /opt/bismark/bin /opt/aligners/bin /opt/rammap/bin -type f -perm /111 -print0); \
+    done < <(find /opt/bismark/bin /opt/aligners/bin /opt/rammap/bin /opt/bwamem3/bin -type f -perm /111 -print0); \
     if grep -F "not found" /tmp/bismark-ldd.txt; then exit 1; fi; \
     grep -Fx "upstream_version=${BISMARK_VERSION}" \
       /opt/bismark/share/provenance/source.txt >/dev/null; \
     grep -Fx "upstream_version=1.1.1" \
       /opt/rammap/share/provenance/source.txt >/dev/null; \
-    rm -f /tmp/bismark-ldd.txt
+    rm -f /tmp/bismark-ldd.txt /tmp/bwamem3-version.txt
 
 WORKDIR /work
 

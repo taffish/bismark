@@ -1,0 +1,52 @@
+[package]
+name = "bismark"
+kind = "tool"
+version = "3.3.0"
+release = 1
+license = "Apache-2.0"
+main = "src/main.taf"
+
+[repository]
+url = "https://github.com/taffish/bismark"
+
+[command]
+name = "taf-bismark"
+
+[runtime]
+pipe = true
+command_mode = true
+
+[container]
+image = "ghcr.io/taffish/bismark:3.3.0-r1"
+dockerfile = "docker/Dockerfile"
+build_platforms = "linux/amd64,linux/arm64"
+
+[meta]
+domain = "bio"
+categories = ["epigenomics", "bisulfite-sequencing", "methylation", "alignment", "genome-indexing"]
+keywords = ["Bismark", "bisulfite sequencing", "WGBS", "RRBS", "EM-seq", "NOMe-seq", "5-Base", "DNA methylation", "Bowtie 2", "HISAT2", "minimap2", "methylation extraction"]
+description = "Bismark Rust Suite 3.3.0 with all 12 canonical tools and the pinned Bowtie 2, HISAT2, minimap2, rammap, and bwa-mem3 alignment backends."
+
+[upstream]
+name = "Bismark"
+type = "github"
+repo = "FelixKrueger/Bismark"
+homepage = "https://felixkrueger.github.io/Bismark/"
+manual = "https://felixkrueger.github.io/Bismark/"
+release_url = "https://github.com/FelixKrueger/Bismark/releases/tag/bismark-rust-v3.3.0"
+downloads = "https://github.com/FelixKrueger/Bismark/releases/download/bismark-rust-v3.3.0/bismark-rust-3.3.0-linux-x86_64.tar.gz; https://github.com/FelixKrueger/Bismark/releases/download/bismark-rust-v3.3.0/bismark-rust-3.3.0-linux-aarch64.tar.gz; https://codeload.github.com/FelixKrueger/Bismark/tar.gz/4eb52d27989bfb52698f1e697fd20c2baaa7f64f"
+version = "3.3.0"
+commit = "4eb52d27989bfb52698f1e697fd20c2baaa7f64f"
+license = "GPL-3.0-only"
+description = "The generally available Rust Bismark suite for bisulfite read alignment, methylation extraction, conversion, QC, and reporting."
+citation = "Krueger F, Andrews SR. Bismark: a flexible aligner and methylation caller for Bisulfite-Seq applications. Bioinformatics. 2011;27(11):1571-1572."
+doi = "10.1093/bioinformatics/btr167"
+pmid = "21493656"
+watch = "tags"
+strip_prefix = "bismark-rust-v"
+
+[smoke]
+backend = "docker"
+timeout = 900
+exist = ["bismark", "bismark.bin", "deduplicate_bismark", "bismark_methylation_extractor", "bismark2bedGraph", "coverage2cytosine", "bismark_genome_preparation", "bam2nuc", "NOMe_filtering", "filter_non_conversion", "methylation_consistency", "bismark2report", "bismark2summary", "bowtie2", "bowtie2-build", "bowtie2-inspect", "hisat2", "hisat2-build", "hisat2-inspect", "minimap2", "rammap", "bwa-mem3", "perl", "python3", "ps", "mkfifo"]
+test = ["/opt/bismark/share/testdata/bismark-smoke.sh identity", "/opt/bismark/share/testdata/bismark-smoke.sh backend-bowtie2", "/opt/bismark/share/testdata/bismark-smoke.sh backend-hisat2", "/opt/bismark/share/testdata/bismark-smoke.sh backend-minimap2", "/opt/bismark/share/testdata/bismark-smoke.sh backend-rammap", "/opt/bismark/share/testdata/bismark-smoke.sh backend-rammap-subprocess", "/opt/bismark/share/testdata/bismark-smoke.sh postprocess", "/opt/bismark/share/testdata/bismark-smoke.sh streaming", "/opt/bismark/share/testdata/bismark-smoke.sh bwamem3"]

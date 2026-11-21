@@ -4,11 +4,11 @@ set -eu
 mode="${1:-all}"
 case "$mode" in
   all)
-    for stage in identity backend-bowtie2 backend-hisat2 backend-minimap2 backend-rammap backend-rammap-subprocess postprocess streaming; do
+    for stage in identity backend-bowtie2 backend-hisat2 backend-minimap2 backend-rammap backend-rammap-subprocess postprocess streaming bwamem3; do
       "$0" "$stage"
     done
     exit 0 ;;
-  identity|backend-bowtie2|backend-hisat2|backend-minimap2|backend-rammap|backend-rammap-subprocess|postprocess|streaming) ;;
+  identity|backend-bowtie2|backend-hisat2|backend-minimap2|backend-rammap|backend-rammap-subprocess|postprocess|streaming|bwamem3) ;;
   *) printf 'unknown smoke mode: %s\n' "$mode" >&2; exit 2 ;;
 esac
 umask 077
@@ -17,6 +17,7 @@ cleanup() {
   rc=$?
   trap - EXIT HUP INT TERM
   if [ "$rc" -ne 0 ]; then
+    printf 'smoke-stage=%s exit=%s\n' "$mode" "$rc" >&2
     for diagnostic in "$tmp"/*.stderr; do
       [ -f "$diagnostic" ] || continue
       printf '%s: %s\n' "$mode" "${diagnostic##*/}" >&2
@@ -103,7 +104,7 @@ run_backend() {
   test -s "$bam"
   test -n "$report"
   test -s "$report"
-  grep -F '(version: v3.2.0)' "$report" >/dev/null
+  grep -F '(version: v3.3.0)' "$report" >/dev/null
   awk -F '\t' '$1=="Sequences analysed in total:" && $2==5 {seen=1} END {exit !seen}' "$report"
 
   case "$backend" in
@@ -135,11 +136,16 @@ run_backend() {
 }
 
 identity() {
-  bismark --version | grep -Fx "Bismark Version: v3.2.0" >/dev/null
-  bismark.bin --version | grep -F "bismark (Bismark Rust suite) v3.2.0" >/dev/null
-  bismark --help | grep -F "The Bismark bisulfite-sequencing suite" >/dev/null
-  bismark align --help | grep -F -- '--no_stream_converted' >/dev/null
-  bismark_methylation_extractor --help | grep -F -- '--allow_discordant' >/dev/null
+  bismark --version >"$tmp/probe.stdout" 2>"$tmp/probe.stderr"
+  grep -Fx "Bismark Version: v3.3.0" "$tmp/probe.stdout" >/dev/null
+  bismark.bin --version >"$tmp/probe.stdout" 2>"$tmp/probe.stderr"
+  grep -F "bismark (Bismark Rust suite) v3.3.0" "$tmp/probe.stdout" >/dev/null
+  bismark --help >"$tmp/probe.stdout" 2>"$tmp/probe.stderr"
+  grep -F "The Bismark bisulfite-sequencing suite" "$tmp/probe.stdout" >/dev/null
+  bismark align --help >"$tmp/probe.stdout" 2>"$tmp/probe.stderr"
+  grep -F -- '--no_stream_converted' "$tmp/probe.stdout" >/dev/null
+  bismark_methylation_extractor --help >"$tmp/probe.stdout" 2>"$tmp/probe.stderr"
+  grep -F -- '--allow_discordant' "$tmp/probe.stdout" >/dev/null
   command -v mkfifo >/dev/null
 
   for command in \
@@ -155,22 +161,33 @@ identity() {
     bismark2report \
     bismark2summary; do
     command -v "$command" >/dev/null
-    "$command" --version | grep -F "(Bismark Rust suite) v3.2.0" >/dev/null
+    "$command" --version >"$tmp/probe.stdout" 2>"$tmp/probe.stderr"
+    grep -F "(Bismark Rust suite) v3.3.0" "$tmp/probe.stdout" >/dev/null
   done
 
-  bowtie2 --version 2>&1 | grep -F "version 2.5.5" >/dev/null
-  bowtie2-build --version 2>&1 | grep -F "version 2.5.5" >/dev/null
-  hisat2 --version 2>&1 | grep -F "version 2.2.2" >/dev/null
-  hisat2-build --version 2>&1 | grep -F "version 2.2.2" >/dev/null
-  minimap2 --version 2>&1 | grep -Fx "2.31-r1302" >/dev/null
-  rammap --version 2>&1 | grep -Fx "rammap 1.1.1" >/dev/null
-  ps --version 2>&1 | grep -F "procps-ng" >/dev/null
+  bowtie2 --version >"$tmp/probe.stdout" 2>&1
+  grep -F "version 2.5.5" "$tmp/probe.stdout" >/dev/null
+  bowtie2-build --version >"$tmp/probe.stdout" 2>&1
+  grep -F "version 2.5.5" "$tmp/probe.stdout" >/dev/null
+  hisat2 --version >"$tmp/probe.stdout" 2>&1
+  grep -F "version 2.2.2" "$tmp/probe.stdout" >/dev/null
+  hisat2-build --version >"$tmp/probe.stdout" 2>&1
+  grep -F "version 2.2.2" "$tmp/probe.stdout" >/dev/null
+  minimap2 --version >"$tmp/probe.stdout" 2>&1
+  grep -Fx "2.31-r1302" "$tmp/probe.stdout" >/dev/null
+  rammap --version >"$tmp/probe.stdout" 2>&1
+  grep -Fx "rammap 1.1.1" "$tmp/probe.stdout" >/dev/null
+  bwa-mem3 version >"$tmp/bwamem3.stdout" 2>"$tmp/bwamem3.stderr"
+  grep -F "0.18.0" "$tmp/bwamem3.stdout" >/dev/null
+  test -s /opt/bwamem3/share/source/bwa-mem3-0.18.0.tar.gz
+  ps --version >"$tmp/probe.stdout" 2>&1
+  grep -F "procps-ng" "$tmp/probe.stdout" >/dev/null
 
   test -s /opt/bismark/share/licenses/bismark/LICENSE
   test -s /opt/bismark/share/licenses/bismark/THIRD-PARTY-NOTICES.md
   test -s /opt/bismark/share/provenance/source.txt
-  test -s /opt/bismark/share/source/bismark-rust-v3.2.0.tar.gz
-  grep -Fx "upstream_commit=c94fa14e45709e6b5b3f68e02775f140dd6c15bb" \
+  test -s /opt/bismark/share/source/bismark-rust-v3.3.0.tar.gz
+  grep -Fx "upstream_commit=4eb52d27989bfb52698f1e697fd20c2baaa7f64f" \
     /opt/bismark/share/provenance/source.txt >/dev/null
   test -s /opt/rammap/share/licenses/rammap/LICENSE
   test -s /opt/rammap/share/provenance/source.txt
@@ -234,7 +251,7 @@ postprocess() {
   find "$tmp/consistency" -type f -name '*.bam' ! -name 'consistency-input.bam' -size +0c -print -quit | grep -q .
 
   printf '>chr1\nACGTACGTACGT\n' > "$tmp/nome/chr1.fa"
-  printf 'Bismark methylation extractor; version v3.2.0\nr1\t+\tchr1\t6\tz\t4\t8\t+\n' \
+  printf 'Bismark methylation extractor; version v3.3.0\nr1\t+\tchr1\t6\tz\t4\t8\t+\n' \
     > "$tmp/nome/input.txt"
   NOMe_filtering \
     --genome_folder "$tmp/nome" \
@@ -263,7 +280,7 @@ def records(path):
     with gzip.open(path, 'rb') as f:
         def size(): return struct.unpack('<i', f.read(4))[0]
         assert f.read(4) == b'BAM\x01'
-        header = f.read(size()); assert b'3.2.0' in header
+        header = f.read(size()); assert b'3.3.0' in header
         for _ in range(size()): f.read(size()); f.read(4)
         rows = []
         while raw := f.read(4):
@@ -282,7 +299,38 @@ PY
   test -z "$(find "$tmp" -type p -print -quit)"
 }
 
+bwamem3() {
+  make_inputs
+  python3 - "$tmp" <<'PY'
+import random, sys
+from pathlib import Path
+root = Path(sys.argv[1])
+seq = ''.join((root/'genome/genome.fa').read_text().splitlines()[1:])
+comp = str.maketrans('ACGT', 'TGCA')
+for mate in (1, 2):
+    with (root/f'R{mate}.fq').open('w') as out:
+        # Enough unique pairs for bwa-mem3's insert-size estimator.
+        for i, pos in enumerate(range(137, 4738, 200), 1):
+            fragment = seq[pos:pos+400]
+            read = fragment[:150] if mate == 1 else fragment[-150:].translate(comp)[::-1]
+            out.write(f'@pair{i}/{mate}\n{read}\n+\n{"I"*len(read)}\n')
+PY
+  bismark_genome_preparation --bwamem3 --parallel 2 "$tmp/genome" >prepare.stdout 2>prepare.stderr
+  test -d "$tmp/genome/Bwamem3_Index"
+  for chemistry in taps five; do
+    set -- --taps
+    if [ "$chemistry" = five ]; then set -- --illumina_5base --bwamem3; fi
+    bismark "$@" --genome "$tmp/genome" -p 2 --basename sample --output_dir "$tmp/$chemistry" \
+      -1 "$tmp/R1.fq" -2 "$tmp/R2.fq" >"$chemistry.stdout" 2>"$chemistry.stderr"
+    test -s "$tmp/$chemistry/sample_pe.bam"
+    grep -F 'bwa-mem3' "$tmp/$chemistry/sample_PE_report.txt" >/dev/null
+    awk -F '\t' '$1=="Sequence pairs analysed in total:" && $2==24 {total=1} $1=="Number of paired-end alignments with a unique best hit:" && $2==24 {mapped=1} END {exit !(total && mapped)}' "$tmp/$chemistry/sample_PE_report.txt"
+  done
+  grep -F 'Library chemistry: TAPS' "$tmp/taps/sample_PE_report.txt" >/dev/null
+}
+
 case "$mode" in
+  bwamem3) bwamem3 ;;
   identity) identity ;;
   backend-*) run_backend "${mode#backend-}" ;;
   postprocess) postprocess ;;

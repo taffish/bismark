@@ -1,4 +1,4 @@
-taf-bismark 3.2.0-r1 — align bisulfite reads, extract calls and view reports
+taf-bismark 3.3.0-r1 — align bisulfite reads, extract calls and view reports
 
 Usage:
   Start in a writable project directory with your reference FASTA and reads.
@@ -21,6 +21,12 @@ by default when supported. For temporary files instead, add --no_stream_converte
 allow enough scratch space. Select the same aligner when preparing and using an
 index. To use HISAT2, for example, specify --hisat2 in both commands.
 
+For paired-end directional TAPS input (not ordinary bisulfite reads):
+  taf-bismark bismark_genome_preparation --bwamem3 reference/
+  taf-bismark bismark --taps --genome reference/ -o taps -1 R1.fq.gz -2 R2.fq.gz
+Keep the original FASTA and the complete Bwamem3_Index/ together. On x86-64,
+bwa-mem3 needs AVX2. Preparation needs assembly-sized disk and memory.
+
 Reuse a shared reference read-only:
   The administrator prepares the complete reference as above and grants users
   read/traverse access. Set an absolute host reference path without spaces:
@@ -40,6 +46,6 @@ display forwarding or a port on Docker, Podman and Apptainer.
 
 If no index is found, check that the original FASTA and its Bisulfite_Genome/
 are together under --genome and match the chosen backend. Nothing is downloaded.
-For a trusted filename containing spaces in TAFFISH 0.11, pass the inner quotes,
+For a trusted filename containing spaces in TAFFISH 0.12, pass the inner quotes,
 e.g. taf-bismark bismark --genome reference/ '"reads with spaces.fq"'.
 More commands, version changes and reference provenance: see the app README.
