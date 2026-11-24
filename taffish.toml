@@ -1,7 +1,7 @@
 [package]
 name = "bismark"
 kind = "tool"
-version = "3.3.0"
+version = "3.4.0"
 release = 1
 license = "Apache-2.0"
 main = "src/main.taf"
@@ -17,7 +17,7 @@ pipe = true
 command_mode = true
 
 [container]
-image = "ghcr.io/taffish/bismark:3.3.0-r1"
+image = "ghcr.io/taffish/bismark:3.4.0-r1"
 dockerfile = "docker/Dockerfile"
 build_platforms = "linux/amd64,linux/arm64"
 
@@ -25,7 +25,7 @@ build_platforms = "linux/amd64,linux/arm64"
 domain = "bio"
 categories = ["epigenomics", "bisulfite-sequencing", "methylation", "alignment", "genome-indexing"]
 keywords = ["Bismark", "bisulfite sequencing", "WGBS", "RRBS", "EM-seq", "NOMe-seq", "5-Base", "DNA methylation", "Bowtie 2", "HISAT2", "minimap2", "methylation extraction"]
-description = "Bismark Rust Suite 3.3.0 with all 12 canonical tools and the pinned Bowtie 2, HISAT2, minimap2, rammap, and bwa-mem3 alignment backends."
+description = "Bismark Rust Suite 3.4.0 with all 12 canonical tools and the pinned Bowtie 2, HISAT2, minimap2, rammap, and bwa-mem3 alignment backends."
 
 [upstream]
 name = "Bismark"
@@ -33,10 +33,10 @@ type = "github"
 repo = "FelixKrueger/Bismark"
 homepage = "https://felixkrueger.github.io/Bismark/"
 manual = "https://felixkrueger.github.io/Bismark/"
-release_url = "https://github.com/FelixKrueger/Bismark/releases/tag/bismark-rust-v3.3.0"
-downloads = "https://github.com/FelixKrueger/Bismark/releases/download/bismark-rust-v3.3.0/bismark-rust-3.3.0-linux-x86_64.tar.gz; https://github.com/FelixKrueger/Bismark/releases/download/bismark-rust-v3.3.0/bismark-rust-3.3.0-linux-aarch64.tar.gz; https://codeload.github.com/FelixKrueger/Bismark/tar.gz/4eb52d27989bfb52698f1e697fd20c2baaa7f64f"
-version = "3.3.0"
-commit = "4eb52d27989bfb52698f1e697fd20c2baaa7f64f"
+release_url = "https://github.com/FelixKrueger/Bismark/releases/tag/bismark-rust-v3.4.0"
+downloads = "https://github.com/FelixKrueger/Bismark/releases/download/bismark-rust-v3.4.0/bismark-rust-3.4.0-linux-x86_64.tar.gz; https://github.com/FelixKrueger/Bismark/releases/download/bismark-rust-v3.4.0/bismark-rust-3.4.0-linux-aarch64.tar.gz; https://codeload.github.com/FelixKrueger/Bismark/tar.gz/3225cc7e04543d87e8efc05b5d0ab39823a438c6"
+version = "3.4.0"
+commit = "3225cc7e04543d87e8efc05b5d0ab39823a438c6"
 license = "GPL-3.0-only"
 description = "The generally available Rust Bismark suite for bisulfite read alignment, methylation extraction, conversion, QC, and reporting."
 citation = "Krueger F, Andrews SR. Bismark: a flexible aligner and methylation caller for Bisulfite-Seq applications. Bioinformatics. 2011;27(11):1571-1572."

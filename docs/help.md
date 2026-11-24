@@ -1,4 +1,4 @@
-taf-bismark 3.3.0-r1 — align bisulfite reads, extract calls and view reports
+taf-bismark 3.4.0-r1 — align bisulfite reads, extract calls and view reports
 
 Usage:
   Start in a writable project directory with your reference FASTA and reads.
@@ -49,3 +49,8 @@ are together under --genome and match the chosen backend. Nothing is downloaded.
 For a trusted filename containing spaces in TAFFISH 0.12, pass the inner quotes,
 e.g. taf-bismark bismark --genome reference/ '"reads with spaces.fq"'.
 More commands, version changes and reference provenance: see the app README.
+
+For UMI-tagged data, exact matching remains the default:
+  taf-bismark deduplicate_bismark --single --barcode sample.bam
+Add --umi_mismatches N only to request tolerant UMI grouping for your assay.
+If inputs would write the same output names, use separate fresh output directories.

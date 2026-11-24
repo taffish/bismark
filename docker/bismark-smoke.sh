@@ -104,7 +104,7 @@ run_backend() {
   test -s "$bam"
   test -n "$report"
   test -s "$report"
-  grep -F '(version: v3.3.0)' "$report" >/dev/null
+  grep -F '(version: v3.4.0)' "$report" >/dev/null
   awk -F '\t' '$1=="Sequences analysed in total:" && $2==5 {seen=1} END {exit !seen}' "$report"
 
   case "$backend" in
@@ -137,9 +137,9 @@ run_backend() {
 
 identity() {
   bismark --version >"$tmp/probe.stdout" 2>"$tmp/probe.stderr"
-  grep -Fx "Bismark Version: v3.3.0" "$tmp/probe.stdout" >/dev/null
+  grep -Fx "Bismark Version: v3.4.0" "$tmp/probe.stdout" >/dev/null
   bismark.bin --version >"$tmp/probe.stdout" 2>"$tmp/probe.stderr"
-  grep -F "bismark (Bismark Rust suite) v3.3.0" "$tmp/probe.stdout" >/dev/null
+  grep -F "bismark (Bismark Rust suite) v3.4.0" "$tmp/probe.stdout" >/dev/null
   bismark --help >"$tmp/probe.stdout" 2>"$tmp/probe.stderr"
   grep -F "The Bismark bisulfite-sequencing suite" "$tmp/probe.stdout" >/dev/null
   bismark align --help >"$tmp/probe.stdout" 2>"$tmp/probe.stderr"
@@ -162,7 +162,7 @@ identity() {
     bismark2summary; do
     command -v "$command" >/dev/null
     "$command" --version >"$tmp/probe.stdout" 2>"$tmp/probe.stderr"
-    grep -F "(Bismark Rust suite) v3.3.0" "$tmp/probe.stdout" >/dev/null
+    grep -F "(Bismark Rust suite) v3.4.0" "$tmp/probe.stdout" >/dev/null
   done
 
   bowtie2 --version >"$tmp/probe.stdout" 2>&1
@@ -186,8 +186,8 @@ identity() {
   test -s /opt/bismark/share/licenses/bismark/LICENSE
   test -s /opt/bismark/share/licenses/bismark/THIRD-PARTY-NOTICES.md
   test -s /opt/bismark/share/provenance/source.txt
-  test -s /opt/bismark/share/source/bismark-rust-v3.3.0.tar.gz
-  grep -Fx "upstream_commit=4eb52d27989bfb52698f1e697fd20c2baaa7f64f" \
+  test -s /opt/bismark/share/source/bismark-rust-v3.4.0.tar.gz
+  grep -Fx "upstream_commit=3225cc7e04543d87e8efc05b5d0ab39823a438c6" \
     /opt/bismark/share/provenance/source.txt >/dev/null
   test -s /opt/rammap/share/licenses/rammap/LICENSE
   test -s /opt/rammap/share/provenance/source.txt
@@ -251,7 +251,7 @@ postprocess() {
   find "$tmp/consistency" -type f -name '*.bam' ! -name 'consistency-input.bam' -size +0c -print -quit | grep -q .
 
   printf '>chr1\nACGTACGTACGT\n' > "$tmp/nome/chr1.fa"
-  printf 'Bismark methylation extractor; version v3.3.0\nr1\t+\tchr1\t6\tz\t4\t8\t+\n' \
+  printf 'Bismark methylation extractor; version v3.4.0\nr1\t+\tchr1\t6\tz\t4\t8\t+\n' \
     > "$tmp/nome/input.txt"
   NOMe_filtering \
     --genome_folder "$tmp/nome" \
@@ -280,7 +280,7 @@ def records(path):
     with gzip.open(path, 'rb') as f:
         def size(): return struct.unpack('<i', f.read(4))[0]
         assert f.read(4) == b'BAM\x01'
-        header = f.read(size()); assert b'3.3.0' in header
+        header = f.read(size()); assert b'3.4.0' in header
         for _ in range(size()): f.read(size()); f.read(4)
         rows = []
         while raw := f.read(4):

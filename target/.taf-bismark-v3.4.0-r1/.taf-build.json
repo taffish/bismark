@@ -1,0 +1,6 @@
+{
+  "artifact": "taf-bismark-v3.4.0-r1",
+  "schema": "taffish.build/v1",
+  "source_sha256": "af0afe8b7710236592ade9b3e984f59917c3f6dd3a5327d97bbbd81a27d05e3c",
+  "wrapper_sha256": "a7e353f03b49652e83ad9f17845ad0b0356fa39aa3cada7f6490e8616677a412"
+}
